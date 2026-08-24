@@ -1,0 +1,10 @@
+<library path="wuji_hand_control_panel">
+  <class
+    name="wuji_rviz_panel/WujiHandControlPanel"
+    type="wuji_rviz_panel::HandControlPanel"
+    base_class_type="rviz_common::Panel">
+    <description>
+      Embedded Raw/Baseline/Temporal tactile maps, pose selection, and constrained grasp actions.
+    </description>
+  </class>
+</library>

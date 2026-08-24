@@ -1,0 +1,583 @@
+{
+  "schema_version": "1.0",
+  "library_name": "wuji_hand1_left_pose_library",
+  "generated_date": "2026-08-24",
+  "hand": {
+    "model": "Wuji Hand 1",
+    "handedness": "left",
+    "dof": 20,
+    "unit": "rad"
+  },
+  "ordering": {
+    "layout": "finger-major",
+    "index_groups": {
+      "0-3": "thumb S1-S4",
+      "4-7": "index S1-S4",
+      "8-11": "middle S1-S4",
+      "12-15": "ring S1-S4",
+      "16-19": "pinky S1-S4"
+    },
+    "sdk_joint_order": [
+      "thumb_S1",
+      "thumb_S2",
+      "thumb_S3",
+      "thumb_S4",
+      "index_S1",
+      "index_S2",
+      "index_S3",
+      "index_S4",
+      "middle_S1",
+      "middle_S2",
+      "middle_S3",
+      "middle_S4",
+      "ring_S1",
+      "ring_S2",
+      "ring_S3",
+      "ring_S4",
+      "pinky_S1",
+      "pinky_S2",
+      "pinky_S3",
+      "pinky_S4"
+    ],
+    "urdf_joint_order": [
+      "left_finger1_joint1",
+      "left_finger1_joint2",
+      "left_finger1_joint3",
+      "left_finger1_joint4",
+      "left_finger2_joint1",
+      "left_finger2_joint2",
+      "left_finger2_joint3",
+      "left_finger2_joint4",
+      "left_finger3_joint1",
+      "left_finger3_joint2",
+      "left_finger3_joint3",
+      "left_finger3_joint4",
+      "left_finger4_joint1",
+      "left_finger4_joint2",
+      "left_finger4_joint3",
+      "left_finger4_joint4",
+      "left_finger5_joint1",
+      "left_finger5_joint2",
+      "left_finger5_joint3",
+      "left_finger5_joint4"
+    ],
+    "critical_note": "Do not reorder this array. The official SDK example uses base = finger*4 and [J1,J2,J3,J4] per finger; finger 0 is thumb and fingers 1-4 are index/middle/ring/pinky."
+  },
+  "left_model_joint_limits_rad": [
+    {
+      "index": 0,
+      "sdk_label": "thumb_S1",
+      "urdf_name": "left_finger1_joint1",
+      "lower": 0.0475,
+      "upper": 1.6033
+    },
+    {
+      "index": 1,
+      "sdk_label": "thumb_S2",
+      "urdf_name": "left_finger1_joint2",
+      "lower": -0.1387,
+      "upper": 0.9324
+    },
+    {
+      "index": 2,
+      "sdk_label": "thumb_S3",
+      "urdf_name": "left_finger1_joint3",
+      "lower": -0.4642,
+      "upper": 1.5623
+    },
+    {
+      "index": 3,
+      "sdk_label": "thumb_S4",
+      "urdf_name": "left_finger1_joint4",
+      "lower": -0.4699,
+      "upper": 1.5568
+    },
+    {
+      "index": 4,
+      "sdk_label": "index_S1",
+      "urdf_name": "left_finger2_joint1",
+      "lower": -0.1585,
+      "upper": 1.5604
+    },
+    {
+      "index": 5,
+      "sdk_label": "index_S2",
+      "urdf_name": "left_finger2_joint2",
+      "lower": -0.37,
+      "upper": 0.37
+    },
+    {
+      "index": 6,
+      "sdk_label": "index_S3",
+      "urdf_name": "left_finger2_joint3",
+      "lower": -0.4777,
+      "upper": 1.5485
+    },
+    {
+      "index": 7,
+      "sdk_label": "index_S4",
+      "urdf_name": "left_finger2_joint4",
+      "lower": -0.4683,
+      "upper": 1.5753
+    },
+    {
+      "index": 8,
+      "sdk_label": "middle_S1",
+      "urdf_name": "left_finger3_joint1",
+      "lower": -0.1644,
+      "upper": 1.5516
+    },
+    {
+      "index": 9,
+      "sdk_label": "middle_S2",
+      "urdf_name": "left_finger3_joint2",
+      "lower": -0.37,
+      "upper": 0.37
+    },
+    {
+      "index": 10,
+      "sdk_label": "middle_S3",
+      "urdf_name": "left_finger3_joint3",
+      "lower": -0.4739,
+      "upper": 1.5512
+    },
+    {
+      "index": 11,
+      "sdk_label": "middle_S4",
+      "urdf_name": "left_finger3_joint4",
+      "lower": -0.4684,
+      "upper": 1.5745
+    },
+    {
+      "index": 12,
+      "sdk_label": "ring_S1",
+      "urdf_name": "left_finger4_joint1",
+      "lower": -0.1554,
+      "upper": 1.5585
+    },
+    {
+      "index": 13,
+      "sdk_label": "ring_S2",
+      "urdf_name": "left_finger4_joint2",
+      "lower": -0.37,
+      "upper": 0.37
+    },
+    {
+      "index": 14,
+      "sdk_label": "ring_S3",
+      "urdf_name": "left_finger4_joint3",
+      "lower": -0.4765,
+      "upper": 1.5487
+    },
+    {
+      "index": 15,
+      "sdk_label": "ring_S4",
+      "urdf_name": "left_finger4_joint4",
+      "lower": -0.4777,
+      "upper": 1.5634
+    },
+    {
+      "index": 16,
+      "sdk_label": "pinky_S1",
+      "urdf_name": "left_finger5_joint1",
+      "lower": -0.1626,
+      "upper": 1.5585
+    },
+    {
+      "index": 17,
+      "sdk_label": "pinky_S2",
+      "urdf_name": "left_finger5_joint2",
+      "lower": -0.37,
+      "upper": 0.37
+    },
+    {
+      "index": 18,
+      "sdk_label": "pinky_S3",
+      "urdf_name": "left_finger5_joint3",
+      "lower": -0.4768,
+      "upper": 1.549
+    },
+    {
+      "index": 19,
+      "sdk_label": "pinky_S4",
+      "urdf_name": "left_finger5_joint4",
+      "lower": -0.4683,
+      "upper": 1.5735
+    }
+  ],
+  "joint_semantics": {
+    "thumb": "S1/S2 are the two thumb-base DoFs; S3/S4 are distal flexion/extension DoFs.",
+    "index_middle_ring_pinky": "S1 flexion/extension, S2 lateral swing/abduction-adduction, S3 flexion/extension, S4 flexion/extension."
+  },
+  "safety": {
+    "hardware_validated": false,
+    "instruction": "These poses are model-checked but not yet verified on the physical hand. First execution should interpolate slowly from the current pose; do not step-command the target. Stop on unexpected contact/current/effort.",
+    "contact_pose_note": "The four thumb-to-finger poses and tripod are deliberately backed off from geometric tip-frame coincidence. Real contact depends on glove thickness, padding, calibration, and the device-specific factory soft limits."
+  },
+  "sources": [
+    {
+      "name": "Wuji SDK official grasp loop",
+      "url": "https://github.com/wuji-technology/wuji-sdk/blob/main/examples/python/wuji_hand/2.grasp_loop.py",
+      "used_for": "20D order; finger-major layout; thumb=finger0; open/close reference"
+    },
+    {
+      "name": "Wuji Retargeting API documentation",
+      "url": "https://docs.wuji.tech/docs/zh/wuji-hand/latest/retargeting/api",
+      "used_for": "20D index groups: thumb 0-3, index 4-7, middle 8-11, ring 12-15, pinky 16-19"
+    },
+    {
+      "name": "Wuji Description official left-hand MJCF",
+      "url": "https://github.com/wuji-technology/wuji-description/blob/main/hand/body/mjcf/left.xml",
+      "used_for": "left-hand joint names, axes, kinematics, and theoretical joint limits"
+    }
+  ],
+  "poses": {
+    "open": {
+      "qpos": [
+        0.06,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "description": "Model-safe open hand. Thumb S1 uses 0.06 rad so the pose remains inside the official left-hand MJCF theoretical lower limit (0.0475 rad).",
+      "source": "official_sdk_open_pattern + official_left_mjcf_limit_adjustment",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true,
+      "reference": {
+        "official_sdk_demo_open_qpos": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "note": "The official SDK grasp-loop commands 0.0 to all 20 joints when open; hardware soft limits are factory calibrated and may differ slightly from the model."
+      }
+    },
+    "relaxed": {
+      "qpos": [
+        0.3,
+        0.05,
+        0.2,
+        0.15,
+        0.25,
+        0.0,
+        0.25,
+        0.2,
+        0.25,
+        0.0,
+        0.25,
+        0.2,
+        0.25,
+        0.0,
+        0.25,
+        0.2,
+        0.25,
+        0.0,
+        0.25,
+        0.2
+      ],
+      "description": "Natural mildly flexed hand; no intended fingertip contact.",
+      "source": "designed_from_official_joint_semantics_and_left_mjcf_limits",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true
+    },
+    "four_finger_90": {
+      "qpos": [
+        0.06,
+        0.0,
+        0.0,
+        0.0,
+        0.7,
+        0.0,
+        0.55,
+        0.35,
+        0.7,
+        0.0,
+        0.55,
+        0.35,
+        0.7,
+        0.0,
+        0.55,
+        0.35,
+        0.7,
+        0.0,
+        0.55,
+        0.35
+      ],
+      "description": "Thumb open; index/middle/ring/pinky each have about 1.60 rad cumulative flexion across S1+S3+S4. This is an approximate 90-degree-class bend, not 90 degrees at every joint.",
+      "source": "designed_from_official_joint_semantics_and_left_mjcf_limits",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true
+    },
+    "fist": {
+      "qpos": [
+        1.2,
+        0.15,
+        0.8,
+        0.7,
+        1.4,
+        0.0,
+        1.2,
+        1.0,
+        1.4,
+        0.0,
+        1.2,
+        1.0,
+        1.4,
+        0.0,
+        1.2,
+        1.0,
+        1.4,
+        0.0,
+        1.2,
+        1.0
+      ],
+      "description": "Closed-fist candidate with all four fingers strongly flexed and thumb opposed. Test slowly because self-contact depends on the real glove/padding.",
+      "source": "designed_from_official_joint_semantics_and_left_mjcf_limits",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true
+    },
+    "thumb_index_touch": {
+      "qpos": [
+        1.022846,
+        0.107664,
+        0.45068,
+        0.481764,
+        0.711104,
+        0.045847,
+        0.838603,
+        0.771143,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "description": "Thumb-index near-touch/contact candidate; middle/ring/pinky open.",
+      "source": "ik_from_official_left_mjcf",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true,
+      "kinematic_note": "Generated from an exact thumb/index tip-link-origin coincidence IK solution, then backed off to 95% of the active joint angles to avoid commanding geometric interpenetration as the default hardware test pose.",
+      "model_tip_frame_gap_mm": 8.576
+    },
+    "thumb_middle_touch": {
+      "qpos": [
+        1.046615,
+        0.1389,
+        0.492983,
+        0.504136,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.685501,
+        0.025432,
+        0.8438,
+        0.783674,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "description": "Thumb-middle near-touch/contact candidate; other non-target fingers open.",
+      "source": "ik_from_official_left_mjcf",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true,
+      "kinematic_note": "95% backed-off solution from exact tip-link-origin coincidence IK.",
+      "model_tip_frame_gap_mm": 8.892
+    },
+    "thumb_ring_touch": {
+      "qpos": [
+        1.161802,
+        0.087229,
+        0.61635,
+        0.545167,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.602262,
+        -0.024852,
+        0.943055,
+        0.908295,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "description": "Thumb-ring near-touch/contact candidate; other non-target fingers open.",
+      "source": "ik_from_official_left_mjcf",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true,
+      "kinematic_note": "95% backed-off solution from exact tip-link-origin coincidence IK.",
+      "model_tip_frame_gap_mm": 8.746
+    },
+    "thumb_pinky_touch": {
+      "qpos": [
+        1.30111,
+        -0.034105,
+        0.64695,
+        0.519621,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.554629,
+        -0.095665,
+        0.943464,
+        0.969247
+      ],
+      "description": "Thumb-pinky near-touch/contact candidate; other non-target fingers open.",
+      "source": "ik_from_official_left_mjcf",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true,
+      "kinematic_note": "95% backed-off solution from exact tip-link-origin coincidence IK.",
+      "model_tip_frame_gap_mm": 9.175
+    },
+    "tripod": {
+      "qpos": [
+        1.042768,
+        0.108423,
+        0.473499,
+        0.474867,
+        0.718932,
+        0.093841,
+        0.830082,
+        0.782249,
+        0.735594,
+        -0.016967,
+        0.797183,
+        0.728878,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "description": "Thumb-index-middle tripod near-contact candidate; ring and pinky open.",
+      "source": "ik_from_official_left_mjcf",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true,
+      "kinematic_note": "95% backed-off solution from exact three-tip coincidence IK.",
+      "model_tip_frame_pair_gaps_mm": {
+        "thumb_index": 8.588,
+        "thumb_middle": 9.141,
+        "index_middle": 0.751
+      }
+    },
+    "index_point": {
+      "qpos": [
+        0.9,
+        0.1,
+        0.55,
+        0.45,
+        0.08,
+        0.0,
+        0.08,
+        0.08,
+        1.25,
+        0.0,
+        1.15,
+        1.0,
+        1.25,
+        0.0,
+        1.15,
+        1.0,
+        1.25,
+        0.0,
+        1.15,
+        1.0
+      ],
+      "description": "Index finger extended; middle/ring/pinky curled; thumb tucked away from the index.",
+      "source": "designed_from_official_joint_semantics_and_left_mjcf_limits",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true
+    },
+    "book_flick_ready": {
+      "qpos": [
+        0.95,
+        0.1,
+        0.55,
+        0.45,
+        0.15,
+        0.0,
+        0.3,
+        0.22,
+        1.3,
+        0.0,
+        1.2,
+        1.05,
+        1.3,
+        0.0,
+        1.2,
+        1.05,
+        1.3,
+        0.0,
+        1.2,
+        1.05
+      ],
+      "description": "Book-flick ready pose: index extended with slight PIP/DIP flexion to form a shallow hook; middle/ring/pinky retracted; thumb tucked.",
+      "source": "designed_from_official_joint_semantics_and_left_mjcf_limits",
+      "validation_status": "model_checked_not_hardware_validated",
+      "within_left_mjcf_limits": true
+    }
+  }
+}

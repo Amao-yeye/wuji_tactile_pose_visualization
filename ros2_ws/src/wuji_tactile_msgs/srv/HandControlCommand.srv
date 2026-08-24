@@ -1,0 +1,12 @@
+# The only remote actions accepted by the constrained live hand-control backend.
+# Deliberately contains no joint array, position, effort, current, or limit.
+
+uint8 ENABLE=1
+uint8 DISABLE=5
+uint8 MOVE_POSE=6
+
+uint8 action
+string pose_id
+---
+bool accepted
+string detail

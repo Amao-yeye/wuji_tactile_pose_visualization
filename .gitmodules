@@ -1,0 +1,6 @@
+[submodule "third_party/wujihandpy"]
+	path = third_party/wujihandpy
+	url = https://github.com/wuji-technology/wujihandpy.git
+[submodule "ros2_ws/src/wujihandros2"]
+	path = ros2_ws/src/wujihandros2
+	url = https://github.com/wuji-technology/wujihandros2.git
