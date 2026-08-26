@@ -13,6 +13,7 @@
 #include <QComboBox>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
+#include <QSlider>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -24,6 +25,7 @@
 #include <QPainter>
 #include <QPointer>
 #include <QRect>
+#include <QSignalBlocker>
 #include <QShowEvent>
 #include <QSizePolicy>
 #include <QThread>
@@ -40,8 +42,12 @@ namespace wuji_rviz_panel
 {
 namespace
 {
-constexpr double kBaselineCaptureSeconds = 2.0;
+constexpr double kBaselineCaptureSeconds = 5.0;
+constexpr double kThresholdCaptureSeconds = 5.0;
+constexpr size_t kMinimumValidFrames = 300;
 constexpr size_t kMinimumBaselineSamples = 5;
+constexpr double kAutoThresholdPercentile = 99.9;
+constexpr double kHighNoiseWarningThreshold = 0.2;
 constexpr int kStatusTimeoutMs = 1200;
 constexpr int kTactileRenderPeriodMs = 20;
 constexpr int kRequiredStableLayoutSamples = 2;
@@ -54,6 +60,12 @@ constexpr double kRawDefaultMaximum = 1.0;
 constexpr double kBaselineDefaultMaximum = 0.25;
 constexpr double kBaselineDefaultThreshold = 0.10;
 constexpr double kTemporalDefaultMaximum = 0.05;
+constexpr double kBaselineVmaxMinimum = 0.05;
+constexpr double kTemporalVmaxMinimum = 0.01;
+constexpr double kVmaxNeutralMaximum = 1.0;
+constexpr double kBaselineThresholdMaximum = 1.0;
+constexpr int kSensitivitySliderMaximum = 10000;
+constexpr int kThresholdSliderMaximum = 100000;
 constexpr auto kInvalidColor = "#3f3f46";
 constexpr auto kInactiveColor = "#111827";
 
@@ -80,6 +92,51 @@ constexpr std::array<PoseUiEntry, 11> kPoseUiEntries{{
 bool finite(double value)
 {
   return std::isfinite(value);
+}
+
+double sensitivitySliderToVmax(int slider_position, double vmax_minimum)
+{
+  if (slider_position <= 0) {
+    return kVmaxNeutralMaximum;
+  }
+  if (slider_position >= kSensitivitySliderMaximum) {
+    return vmax_minimum;
+  }
+  const double sensitivity =
+    static_cast<double>(slider_position) / kSensitivitySliderMaximum;
+  return std::exp(
+    std::log(kVmaxNeutralMaximum) +
+    sensitivity * (std::log(vmax_minimum) - std::log(kVmaxNeutralMaximum)));
+}
+
+int vmaxToSensitivitySlider(double vmax, double vmax_minimum)
+{
+  if (vmax >= kVmaxNeutralMaximum) {
+    return 0;
+  }
+  if (vmax <= vmax_minimum) {
+    return kSensitivitySliderMaximum;
+  }
+  const double sensitivity =
+    (std::log(vmax) - std::log(kVmaxNeutralMaximum)) /
+    (std::log(vmax_minimum) - std::log(kVmaxNeutralMaximum));
+  return static_cast<int>(std::lround(sensitivity * kSensitivitySliderMaximum));
+}
+
+double thresholdSliderToValue(int slider_position)
+{
+  if (slider_position <= 0) {
+    return 0.0;
+  }
+  if (slider_position >= kThresholdSliderMaximum) {
+    return kBaselineThresholdMaximum;
+  }
+  return static_cast<double>(slider_position) / kThresholdSliderMaximum;
+}
+
+QString vmaxValueText(double vmax)
+{
+  return QString("vmax=%1").arg(vmax, 0, 'f', 3);
 }
 
 uint64_t currentThreadId()
@@ -173,7 +230,7 @@ void HeatmapWidget::setGrid(
       if (finite(values_[index])) {
         const bool is_active =
           active.empty() || (index < active.size() && active[index] != 0);
-        color = is_active ? infernoColor(values_[index], fixed_maximum).rgb() : inactive_color;
+        color = is_active ? turboColor(values_[index], fixed_maximum).rgb() : inactive_color;
       }
       pixels[col] = color;
     }
@@ -186,31 +243,29 @@ QSize HeatmapWidget::minimumSizeHint() const
   return QSize(250, 260);
 }
 
-QColor HeatmapWidget::infernoColor(double value, double maximum)
+QColor HeatmapWidget::turboColor(double value, double maximum)
 {
-  static const std::vector<std::pair<double, QColor>> stops = {
-    {0.00, QColor("#000004")},
-    {0.18, QColor("#320a5e")},
-    {0.36, QColor("#781c6d")},
-    {0.54, QColor("#bb3654")},
-    {0.72, QColor("#ed6925")},
-    {0.88, QColor("#fbb61a")},
-    {1.00, QColor("#fcffa4")},
-  };
+  // Polynomial approximation of Google's Turbo color map. The heatmap still
+  // clips only at the drawing stage; stored values and statistics are intact.
+  static constexpr std::array<double, 6> red_coefficients{
+    0.13572138, 4.61539260, -42.66032258, 132.13108234, -152.94239396, 59.28637943};
+  static constexpr std::array<double, 6> green_coefficients{
+    0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604};
+  static constexpr std::array<double, 6> blue_coefficients{
+    0.10667330, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973};
+
   const double ratio = std::clamp(value / maximum, 0.0, 1.0);
-  for (size_t index = 1; index < stops.size(); ++index) {
-    if (ratio <= stops[index].first) {
-      const auto & lower = stops[index - 1];
-      const auto & upper = stops[index];
-      const double span = upper.first - lower.first;
-      const double blend = span > 0.0 ? (ratio - lower.first) / span : 0.0;
-      return QColor(
-        static_cast<int>(std::lround(lower.second.red() + blend * (upper.second.red() - lower.second.red()))),
-        static_cast<int>(std::lround(lower.second.green() + blend * (upper.second.green() - lower.second.green()))),
-        static_cast<int>(std::lround(lower.second.blue() + blend * (upper.second.blue() - lower.second.blue()))));
-    }
-  }
-  return stops.back().second;
+  const auto evaluate = [ratio](const std::array<double, 6> & coefficients) {
+      return (((((coefficients[5] * ratio + coefficients[4]) * ratio + coefficients[3]) *
+             ratio + coefficients[2]) * ratio + coefficients[1]) * ratio + coefficients[0]);
+    };
+  const auto channel = [](double component) {
+      return static_cast<int>(std::lround(std::clamp(component, 0.0, 1.0) * 255.0));
+    };
+  return QColor(
+    channel(evaluate(red_coefficients)),
+    channel(evaluate(green_coefficients)),
+    channel(evaluate(blue_coefficients)));
 }
 
 void HeatmapWidget::paintEvent(QPaintEvent *)
@@ -376,45 +431,134 @@ void HandControlPanel::buildUi()
   control_layout->addWidget(request_result_label_);
   root_layout->addWidget(controls);
 
-  auto * settings = new QGroupBox("Fixed display scales and captured baseline");
+  auto * settings = new QGroupBox(QString::fromUtf8("显示设置"));
   auto * settings_layout = new QGridLayout(settings);
-  raw_vmax_ = new QDoubleSpinBox();
-  baseline_vmax_ = new QDoubleSpinBox();
-  baseline_threshold_ = new QDoubleSpinBox();
-  baseline_offset_ = new QDoubleSpinBox();
-  temporal_vmax_ = new QDoubleSpinBox();
-  for (auto * spin : {raw_vmax_, baseline_vmax_, baseline_threshold_, baseline_offset_, temporal_vmax_}) {
-    spin->setDecimals(3);
-    spin->setRange(0.0, 10.0);
-    spin->setSingleStep(0.01);
+
+  // Keep the existing value holders for internal compatibility. Only the
+  // three semantic sliders below are exposed to the operator.
+  raw_vmax_ = new QDoubleSpinBox(settings);
+  baseline_vmax_ = new QDoubleSpinBox(settings);
+  baseline_threshold_ = new QDoubleSpinBox(settings);
+  baseline_offset_ = new QDoubleSpinBox(settings);
+  temporal_vmax_ = new QDoubleSpinBox(settings);
+  for (auto * spin : {raw_vmax_, baseline_vmax_, baseline_threshold_, baseline_offset_,
+      temporal_vmax_})
+  {
+    spin->setDecimals(5);
+    spin->setSingleStep(0.001);
+    spin->hide();
   }
-  raw_vmax_->setMinimum(0.001);
+  raw_vmax_->setObjectName("raw_vmax_internal");
+  baseline_vmax_->setObjectName("baseline_vmax_internal");
+  baseline_threshold_->setObjectName("baseline_threshold_internal");
+  baseline_offset_->setObjectName("baseline_offset_internal");
+  temporal_vmax_->setObjectName("temporal_vmax_internal");
+  raw_vmax_->setRange(kRawDefaultMaximum, kRawDefaultMaximum);
   raw_vmax_->setValue(kRawDefaultMaximum);
-  baseline_vmax_->setMinimum(0.05);
+  baseline_vmax_->setRange(kBaselineVmaxMinimum, kVmaxNeutralMaximum);
   baseline_vmax_->setValue(kBaselineDefaultMaximum);
+  baseline_threshold_->setDecimals(15);
+  baseline_threshold_->setRange(0.0, kBaselineThresholdMaximum);
   baseline_threshold_->setValue(kBaselineDefaultThreshold);
+  baseline_offset_->setRange(0.0, 0.0);
   baseline_offset_->setValue(0.0);
-  temporal_vmax_->setMinimum(0.005);
+  temporal_vmax_->setRange(kTemporalVmaxMinimum, kVmaxNeutralMaximum);
   temporal_vmax_->setValue(kTemporalDefaultMaximum);
 
-  settings_layout->addWidget(new QLabel("Raw vmax"), 0, 0);
-  settings_layout->addWidget(raw_vmax_, 0, 1);
-  settings_layout->addWidget(new QLabel("Baseline vmax"), 0, 2);
-  settings_layout->addWidget(baseline_vmax_, 0, 3);
-  settings_layout->addWidget(new QLabel("Baseline threshold (display only)"), 0, 4);
-  settings_layout->addWidget(baseline_threshold_, 0, 5);
-  settings_layout->addWidget(new QLabel("Baseline offset (display only)"), 1, 0);
-  settings_layout->addWidget(baseline_offset_, 1, 1);
-  settings_layout->addWidget(new QLabel("Temporal vmax"), 1, 2);
-  settings_layout->addWidget(temporal_vmax_, 1, 3);
-  capture_baseline_button_ = new QPushButton("Capture Baseline (2 s median)");
+  contact_sensitivity_slider_ = new QSlider(Qt::Horizontal, settings);
+  contact_threshold_slider_ = new QSlider(Qt::Horizontal, settings);
+  dynamic_sensitivity_slider_ = new QSlider(Qt::Horizontal, settings);
+  contact_sensitivity_slider_->setObjectName("contact_sensitivity_slider");
+  contact_threshold_slider_->setObjectName("contact_threshold_slider");
+  dynamic_sensitivity_slider_->setObjectName("dynamic_sensitivity_slider");
+  contact_sensitivity_slider_->setRange(0, kSensitivitySliderMaximum);
+  dynamic_sensitivity_slider_->setRange(0, kSensitivitySliderMaximum);
+  contact_threshold_slider_->setRange(0, kThresholdSliderMaximum);
+  contact_sensitivity_slider_->setValue(
+    vmaxToSensitivitySlider(kBaselineDefaultMaximum, kBaselineVmaxMinimum));
+  dynamic_sensitivity_slider_->setValue(
+    vmaxToSensitivitySlider(kTemporalDefaultMaximum, kTemporalVmaxMinimum));
+  contact_threshold_slider_->setValue(
+    static_cast<int>(std::lround(kBaselineDefaultThreshold * kThresholdSliderMaximum)));
+  for (auto * slider :
+    {contact_sensitivity_slider_, contact_threshold_slider_, dynamic_sensitivity_slider_})
+  {
+    slider->setTracking(true);
+    slider->setSingleStep(1);
+    slider->setPageStep(100);
+  }
+
+  auto * contact_sensitivity_label = new QLabel(QString::fromUtf8("接触灵敏度"), settings);
+  auto * contact_threshold_label = new QLabel(QString::fromUtf8("接触阈值"), settings);
+  auto * dynamic_sensitivity_label = new QLabel(QString::fromUtf8("动态灵敏度"), settings);
+  contact_sensitivity_value_label_ =
+    new QLabel(vmaxValueText(baseline_vmax_->value()), settings);
+  contact_threshold_value_label_ = new QLabel(settings);
+  dynamic_sensitivity_value_label_ =
+    new QLabel(vmaxValueText(temporal_vmax_->value()), settings);
+  contact_sensitivity_value_label_->setObjectName("contact_sensitivity_value");
+  contact_threshold_value_label_->setObjectName("contact_threshold_value");
+  dynamic_sensitivity_value_label_->setObjectName("dynamic_sensitivity_value");
+  for (auto * value_label :
+    {contact_sensitivity_value_label_, contact_threshold_value_label_,
+      dynamic_sensitivity_value_label_})
+  {
+    value_label->setMinimumWidth(82);
+  }
+
+  const QString contact_tooltip = QString::fromUtf8(
+    "调高后更容易看到微弱的新增接触。\n最低灵敏度对应完整 [0,1] 显示范围。");
+  const QString threshold_tooltip = QString::fromUtf8(
+    "过滤无接触状态下的微弱噪声。\n执行 Baseline 标定后可自动估计。\n"
+    "设为“关闭”时不进行阈值过滤。");
+  const QString dynamic_tooltip = QString::fromUtf8(
+    "调高后更容易看到接触、释放、滑动和冲击等快速变化。\n"
+    "最低灵敏度对应完整 [0,1] 显示范围。");
+  contact_sensitivity_label->setToolTip(contact_tooltip);
+  contact_sensitivity_slider_->setToolTip(contact_tooltip);
+  contact_sensitivity_value_label_->setToolTip(contact_tooltip);
+  contact_threshold_label->setToolTip(threshold_tooltip);
+  contact_threshold_slider_->setToolTip(threshold_tooltip);
+  contact_threshold_value_label_->setToolTip(threshold_tooltip);
+  dynamic_sensitivity_label->setToolTip(dynamic_tooltip);
+  dynamic_sensitivity_slider_->setToolTip(dynamic_tooltip);
+  dynamic_sensitivity_value_label_->setToolTip(dynamic_tooltip);
+
+  settings_layout->addWidget(contact_sensitivity_label, 0, 0);
+  settings_layout->addWidget(new QLabel(QString::fromUtf8("低"), settings), 0, 1);
+  settings_layout->addWidget(contact_sensitivity_slider_, 0, 2);
+  settings_layout->addWidget(new QLabel(QString::fromUtf8("高"), settings), 0, 3);
+  settings_layout->addWidget(contact_sensitivity_value_label_, 0, 4);
+  settings_layout->addWidget(contact_threshold_label, 1, 0);
+  settings_layout->addWidget(new QLabel(QString::fromUtf8("关闭"), settings), 1, 1);
+  settings_layout->addWidget(contact_threshold_slider_, 1, 2);
+  settings_layout->addWidget(new QLabel(QString::fromUtf8("高"), settings), 1, 3);
+  settings_layout->addWidget(contact_threshold_value_label_, 1, 4);
+  auto_threshold_button_ = new QPushButton(QString::fromUtf8("自动估计"), settings);
+  auto_threshold_button_->setObjectName("auto_threshold_button");
+  auto_threshold_button_->setToolTip(threshold_tooltip);
+  settings_layout->addWidget(auto_threshold_button_, 1, 5);
+  settings_layout->addWidget(dynamic_sensitivity_label, 2, 0);
+  settings_layout->addWidget(new QLabel(QString::fromUtf8("低"), settings), 2, 1);
+  settings_layout->addWidget(dynamic_sensitivity_slider_, 2, 2);
+  settings_layout->addWidget(new QLabel(QString::fromUtf8("高"), settings), 2, 3);
+  settings_layout->addWidget(dynamic_sensitivity_value_label_, 2, 4);
+  settings_layout->setColumnStretch(2, 1);
+
+  capture_baseline_button_ = new QPushButton("Capture Baseline");
+  capture_baseline_button_->setObjectName("capture_baseline_button");
   reset_baseline_button_ = new QPushButton("Reset Baseline");
-  settings_layout->addWidget(capture_baseline_button_, 1, 4);
-  settings_layout->addWidget(reset_baseline_button_, 1, 5);
+  auto * baseline_buttons = new QHBoxLayout();
+  baseline_buttons->addWidget(capture_baseline_button_);
+  baseline_buttons->addWidget(reset_baseline_button_);
+  baseline_buttons->addStretch(1);
+  settings_layout->addLayout(baseline_buttons, 3, 0, 1, 6);
   baseline_state_label_ = new QLabel("Baseline not captured; residual data is intentionally uninitialized.");
+  baseline_state_label_->setObjectName("baseline_state_label");
   baseline_state_label_->setWordWrap(true);
   baseline_state_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-  settings_layout->addWidget(baseline_state_label_, 2, 0, 1, 6);
+  settings_layout->addWidget(baseline_state_label_, 4, 0, 1, 6);
+  updateThresholdDisplay();
   root_layout->addWidget(settings);
 
   raw_heatmap_ = new HeatmapWidget();
@@ -433,10 +577,36 @@ void HandControlPanel::buildUi()
 void HandControlPanel::connectUi()
 {
   connect(capture_baseline_button_, &QPushButton::clicked, this, &HandControlPanel::startBaselineCapture);
+  connect(auto_threshold_button_, &QPushButton::clicked, this, &HandControlPanel::startThresholdCapture);
   connect(reset_baseline_button_, &QPushButton::clicked, this, &HandControlPanel::resetBaseline);
-  for (auto * spin : {raw_vmax_, baseline_vmax_, baseline_threshold_, baseline_offset_, temporal_vmax_}) {
-    connect(spin, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double) {renderLatest();});
-  }
+  connect(
+    contact_sensitivity_slider_, &QSlider::valueChanged, this, [this](int slider_position) {
+      baseline_vmax_->setValue(
+        sensitivitySliderToVmax(slider_position, kBaselineVmaxMinimum));
+      contact_sensitivity_value_label_->setText(vmaxValueText(baseline_vmax_->value()));
+      renderLatest();
+    });
+  connect(
+    contact_threshold_slider_, &QSlider::valueChanged, this, [this](int slider_position) {
+      baseline_threshold_->setValue(thresholdSliderToValue(slider_position));
+      threshold_mode_ =
+        slider_position == 0 ? ThresholdMode::Off : ThresholdMode::Manual;
+      updateThresholdDisplay();
+      renderLatest();
+    });
+  connect(contact_threshold_slider_, &QSlider::sliderPressed, this, [this]() {
+    threshold_mode_ =
+      contact_threshold_slider_->value() == 0 ?
+      ThresholdMode::Off : ThresholdMode::Manual;
+    updateThresholdDisplay();
+  });
+  connect(
+    dynamic_sensitivity_slider_, &QSlider::valueChanged, this, [this](int slider_position) {
+      temporal_vmax_->setValue(
+        sensitivitySliderToVmax(slider_position, kTemporalVmaxMinimum));
+      dynamic_sensitivity_value_label_->setText(vmaxValueText(temporal_vmax_->value()));
+      renderLatest();
+    });
   connect(
     pose_selector_, qOverload<int>(&QComboBox::currentIndexChanged),
     this, &HandControlPanel::onPoseSelectionChanged);
@@ -936,9 +1106,13 @@ void HandControlPanel::renderLatest()
       baseline_display[index] = std::max(signed_delta - offset, 0.0);
       baseline_active[index] = baseline_display[index] >= threshold ? 1 : 0;
     }
+    if (threshold_capture_active_) {
+      baseline_overlay = QString::fromUtf8(
+        "正在估计接触阈值...\n请保持手套无任何外部接触。");
+    }
   } else {
     baseline_overlay = baseline_capture_active_ ?
-      "Capturing 2 s median baseline...\nKeep the tactile glove free of external contact." :
+      QString::fromUtf8("正在采集 Baseline...\n请保持手套无任何外部接触。") :
       "Baseline not captured\nResidual data is uninitialized.";
   }
   baseline_heatmap_->setGrid(
@@ -1034,16 +1208,62 @@ void HandControlPanel::startBaselineCapture()
     baseline_state_label_->setText("No tactile frame is available; baseline capture was not started.");
     return;
   }
+  clearBaselineCapture();
   baseline_ready_ = false;
   baseline_.clear();
   baseline_valid_.clear();
+  baseline_valid_taxel_count_ = 0;
   baseline_capture_active_ = true;
   baseline_capture_has_first_sample_ = false;
+  full_calibration_active_ = true;
   baseline_capture_last_sequence_ = latest_sequence_;
   baseline_capture_frame_count_ = 0;
+  threshold_capture_frame_count_ = 0;
   baseline_samples_.assign(raw_pressure_.size(), {});
-  baseline_state_label_->setText("Waiting for the first fresh frame of the 2 s median baseline capture.");
+  auto_threshold_button_->setEnabled(false);
+  baseline_state_label_->setText(QString::fromUtf8(
+      "正在等待新的 tactile frame 以开始 Baseline 标定；请保持手套无任何外部接触。"));
   renderLatest();
+}
+
+void HandControlPanel::startThresholdCapture()
+{
+  const bool have_valid_baseline =
+    baseline_ready_ && baseline_.size() == raw_pressure_.size() &&
+    baseline_valid_.size() == baseline_.size() &&
+    std::any_of(
+    baseline_valid_.begin(), baseline_valid_.end(),
+    [](uint8_t valid) {return valid != 0;});
+  if (!have_valid_baseline) {
+    baseline_state_label_->setText(QString::fromUtf8(
+        "无法自动估计接触阈值：当前没有有效 Baseline，请先执行 Capture Baseline。"));
+    return;
+  }
+  beginThresholdCapture(false);
+  renderLatest();
+}
+
+void HandControlPanel::beginThresholdCapture(bool part_of_full_calibration)
+{
+  baseline_capture_active_ = false;
+  baseline_capture_has_first_sample_ = false;
+  baseline_samples_.clear();
+  threshold_capture_active_ = true;
+  threshold_capture_has_first_sample_ = false;
+  full_calibration_active_ = part_of_full_calibration;
+  threshold_capture_last_sequence_ = latest_sequence_;
+  threshold_capture_frame_count_ = 0;
+  threshold_capture_duration_seconds_ = 0.0;
+  threshold_residual_samples_.clear();
+  residual_median_ = std::numeric_limits<double>::quiet_NaN();
+  residual_p95_ = std::numeric_limits<double>::quiet_NaN();
+  residual_p99_ = std::numeric_limits<double>::quiet_NaN();
+  residual_p999_ = std::numeric_limits<double>::quiet_NaN();
+  residual_maximum_ = std::numeric_limits<double>::quiet_NaN();
+  auto_threshold_ = std::numeric_limits<double>::quiet_NaN();
+  auto_threshold_button_->setEnabled(false);
+  baseline_state_label_->setText(QString::fromUtf8(
+      "正在等待新的 tactile frame 以估计接触阈值；Baseline 已固定，请继续保持无外部接触。"));
 }
 
 void HandControlPanel::resetBaseline()
@@ -1058,6 +1278,11 @@ void HandControlPanel::resetBaseline()
 
 void HandControlPanel::advanceBaselineCapture()
 {
+  const auto now = std::chrono::steady_clock::now();
+  if (threshold_capture_active_) {
+    advanceThresholdCapture(now);
+    return;
+  }
   if (!baseline_capture_active_ || latest_sequence_ == baseline_capture_last_sequence_) {
     return;
   }
@@ -1067,25 +1292,39 @@ void HandControlPanel::advanceBaselineCapture()
     return;
   }
   baseline_capture_last_sequence_ = latest_sequence_;
-  const auto now = std::chrono::steady_clock::now();
   if (!baseline_capture_has_first_sample_) {
     baseline_capture_first_sample_ = now;
     baseline_capture_has_first_sample_ = true;
   }
+  bool valid_frame = false;
   for (size_t index = 0; index < raw_pressure_.size(); ++index) {
     if (finite(raw_pressure_[index])) {
       baseline_samples_[index].push_back(raw_pressure_[index]);
+      valid_frame = true;
     }
   }
-  ++baseline_capture_frame_count_;
+  if (valid_frame) {
+    ++baseline_capture_frame_count_;
+  }
   const double elapsed = std::chrono::duration<double>(now - baseline_capture_first_sample_).count();
-  if (elapsed < kBaselineCaptureSeconds) {
+  if (elapsed < kBaselineCaptureSeconds ||
+    baseline_capture_frame_count_ < kMinimumValidFrames)
+  {
+    const bool waiting_for_frames =
+      elapsed >= kBaselineCaptureSeconds &&
+      baseline_capture_frame_count_ < kMinimumValidFrames;
     baseline_state_label_->setText(
-      QString("Capturing baseline: %1/2.0 s, %2 fresh frames; keep external contact removed.")
+      waiting_for_frames ?
+      QString::fromUtf8(
+        "正在等待足够有效数据... Baseline %1 / 5.0 s，有效帧 %2 / 300；请保持无外部接触。")
+      .arg(elapsed, 0, 'f', 1).arg(baseline_capture_frame_count_) :
+      QString::fromUtf8(
+        "正在采集 Baseline... %1 / 5.0 s，有效帧 %2 / 300；请保持无外部接触。")
       .arg(elapsed, 0, 'f', 1).arg(baseline_capture_frame_count_));
     return;
   }
 
+  baseline_capture_duration_seconds_ = elapsed;
   baseline_.assign(raw_pressure_.size(), std::numeric_limits<double>::quiet_NaN());
   baseline_valid_.assign(raw_pressure_.size(), 0);
   size_t valid_count = 0;
@@ -1096,20 +1335,215 @@ void HandControlPanel::advanceBaselineCapture()
       ++valid_count;
     }
   }
-  const size_t frame_count = baseline_capture_frame_count_;
+  baseline_valid_taxel_count_ = valid_count;
+  if (valid_count == 0) {
+    baseline_ready_ = false;
+    clearBaselineCapture();
+    baseline_state_label_->setText(QString::fromUtf8(
+        "Baseline 标定取消：没有 taxel 获得足够的 finite 样本，请检查数据有效性后重试。"));
+    return;
+  }
   baseline_ready_ = true;
-  clearBaselineCapture();
+  beginThresholdCapture(true);
+}
+
+void HandControlPanel::advanceThresholdCapture(
+  const std::chrono::steady_clock::time_point & now)
+{
+  if (!threshold_capture_active_ || latest_sequence_ == threshold_capture_last_sequence_) {
+    return;
+  }
+  if (!baseline_ready_ || baseline_.size() != raw_pressure_.size() ||
+    baseline_valid_.size() != raw_pressure_.size())
+  {
+    clearBaselineCapture();
+    baseline_state_label_->setText(QString::fromUtf8(
+        "接触阈值估计已取消：Baseline 或 tactile 布局已失效。"));
+    return;
+  }
+
+  threshold_capture_last_sequence_ = latest_sequence_;
+  if (!threshold_capture_has_first_sample_) {
+    threshold_capture_first_sample_ = now;
+    threshold_capture_has_first_sample_ = true;
+  }
+  bool valid_frame = false;
+  for (size_t index = 0; index < raw_pressure_.size(); ++index) {
+    if (baseline_valid_[index] == 0 || !finite(baseline_[index]) ||
+      !finite(raw_pressure_[index]))
+    {
+      continue;
+    }
+    const double residual = std::max(raw_pressure_[index] - baseline_[index], 0.0);
+    if (finite(residual)) {
+      threshold_residual_samples_.push_back(residual);
+      valid_frame = true;
+    }
+  }
+  if (valid_frame) {
+    ++threshold_capture_frame_count_;
+  }
+
+  const double elapsed =
+    std::chrono::duration<double>(now - threshold_capture_first_sample_).count();
+  if (elapsed < kThresholdCaptureSeconds ||
+    threshold_capture_frame_count_ < kMinimumValidFrames)
+  {
+    const bool waiting_for_frames =
+      elapsed >= kThresholdCaptureSeconds &&
+      threshold_capture_frame_count_ < kMinimumValidFrames;
+    baseline_state_label_->setText(
+      waiting_for_frames ?
+      QString::fromUtf8(
+        "正在等待足够有效数据... 接触阈值 %1 / 5.0 s，有效帧 %2 / 300；请保持无外部接触。")
+      .arg(elapsed, 0, 'f', 1).arg(threshold_capture_frame_count_) :
+      QString::fromUtf8(
+        "正在估计接触阈值... %1 / 5.0 s，有效帧 %2 / 300；请保持无外部接触。")
+      .arg(elapsed, 0, 'f', 1).arg(threshold_capture_frame_count_));
+    return;
+  }
+
+  threshold_capture_duration_seconds_ = elapsed;
+  std::sort(threshold_residual_samples_.begin(), threshold_residual_samples_.end());
+  residual_median_ = percentileOfSorted(threshold_residual_samples_, 50.0);
+  residual_p95_ = percentileOfSorted(threshold_residual_samples_, 95.0);
+  residual_p99_ = percentileOfSorted(threshold_residual_samples_, 99.0);
+  residual_p999_ =
+    percentileOfSorted(threshold_residual_samples_, kAutoThresholdPercentile);
+  residual_maximum_ = threshold_residual_samples_.empty() ?
+    std::numeric_limits<double>::quiet_NaN() : threshold_residual_samples_.back();
+  if (!finite(residual_p999_)) {
+    clearBaselineCapture();
+    baseline_state_label_->setText(QString::fromUtf8(
+        "接触阈值估计已取消：Phase 2 没有可用于 P99.9 的 finite residual。"));
+    return;
+  }
+
+  const bool completed_full_calibration = full_calibration_active_;
+  setAutomaticThreshold(std::clamp(residual_p999_, 0.0, 1.0));
+  threshold_capture_active_ = false;
+  threshold_capture_has_first_sample_ = false;
+  full_calibration_active_ = false;
+  threshold_residual_samples_.clear();
+  auto_threshold_button_->setEnabled(true);
+
+  const QString high_noise_warning =
+    auto_threshold_ > kHighNoiseWarningThreshold ?
+    QString::fromUtf8(
+      "\nBaseline noise is unusually high. "
+      "Please check glove preload, fit, sensor drift, or stability.") :
+    QString();
   baseline_state_label_->setText(
-    QString("Baseline complete: 2 s median, %1 frames, %2/%3 valid taxels (>=5 finite samples each).")
-    .arg(frame_count).arg(valid_count).arg(raw_pressure_.size()));
+    completed_full_calibration ?
+    QString::fromUtf8(
+      "标定完成：Baseline %1 s / %2 有效帧，接触阈值 %3 s / %4 有效帧，"
+      "P99.9=%5（自动）。%6")
+    .arg(baseline_capture_duration_seconds_, 0, 'f', 2)
+    .arg(baseline_capture_frame_count_)
+    .arg(threshold_capture_duration_seconds_, 0, 'f', 2)
+    .arg(threshold_capture_frame_count_)
+    .arg(auto_threshold_, 0, 'f', 6)
+    .arg(high_noise_warning) :
+    QString::fromUtf8(
+      "接触阈值自动估计完成：%1 s / %2 有效帧，P99.9=%3（自动）。%4")
+    .arg(threshold_capture_duration_seconds_, 0, 'f', 2)
+    .arg(threshold_capture_frame_count_)
+    .arg(auto_threshold_, 0, 'f', 6)
+    .arg(high_noise_warning));
+
+  if (node_ != nullptr) {
+    if (completed_full_calibration) {
+      RCLCPP_INFO(
+        node_->get_logger(),
+        "Baseline calibration completed:\n"
+        "baseline_duration = %.6f s\n"
+        "baseline_valid_frames = %zu\n"
+        "threshold_duration = %.6f s\n"
+        "threshold_valid_frames = %zu\n"
+        "valid_taxels = %zu\n"
+        "threshold_percentile = %.1f\n"
+        "residual_median = %.9f\n"
+        "residual_p95 = %.9f\n"
+        "residual_p99 = %.9f\n"
+        "residual_p99.9 = %.9f\n"
+        "residual_max = %.9f\n"
+        "auto_threshold = %.9f",
+        baseline_capture_duration_seconds_, baseline_capture_frame_count_,
+        threshold_capture_duration_seconds_, threshold_capture_frame_count_,
+        baseline_valid_taxel_count_, kAutoThresholdPercentile,
+        residual_median_, residual_p95_, residual_p99_, residual_p999_,
+        residual_maximum_, auto_threshold_);
+    } else {
+      RCLCPP_INFO(
+        node_->get_logger(),
+        "Contact threshold estimation completed: duration=%.6f s, valid_frames=%zu, "
+        "valid_taxels=%zu, percentile=%.1f, residual_median=%.9f, "
+        "residual_p95=%.9f, residual_p99=%.9f, residual_p99.9=%.9f, "
+        "residual_max=%.9f, auto_threshold=%.9f",
+        threshold_capture_duration_seconds_, threshold_capture_frame_count_,
+        baseline_valid_taxel_count_, kAutoThresholdPercentile,
+        residual_median_, residual_p95_, residual_p99_, residual_p999_,
+        residual_maximum_, auto_threshold_);
+    }
+    if (auto_threshold_ > kHighNoiseWarningThreshold) {
+      RCLCPP_WARN(
+        node_->get_logger(),
+        "Baseline noise is unusually high. "
+        "Please check glove preload, fit, sensor drift, or stability.");
+    }
+  }
+  renderLatest();
 }
 
 void HandControlPanel::clearBaselineCapture()
 {
   baseline_capture_active_ = false;
   baseline_capture_has_first_sample_ = false;
+  threshold_capture_active_ = false;
+  threshold_capture_has_first_sample_ = false;
+  full_calibration_active_ = false;
   baseline_capture_frame_count_ = 0;
+  threshold_capture_frame_count_ = 0;
   baseline_samples_.clear();
+  threshold_residual_samples_.clear();
+  baseline_valid_taxel_count_ = 0;
+  baseline_capture_duration_seconds_ = 0.0;
+  threshold_capture_duration_seconds_ = 0.0;
+  residual_median_ = std::numeric_limits<double>::quiet_NaN();
+  residual_p95_ = std::numeric_limits<double>::quiet_NaN();
+  residual_p99_ = std::numeric_limits<double>::quiet_NaN();
+  residual_p999_ = std::numeric_limits<double>::quiet_NaN();
+  residual_maximum_ = std::numeric_limits<double>::quiet_NaN();
+  auto_threshold_ = std::numeric_limits<double>::quiet_NaN();
+  if (auto_threshold_button_ != nullptr) {
+    auto_threshold_button_->setEnabled(true);
+  }
+}
+
+void HandControlPanel::updateThresholdDisplay()
+{
+  if (threshold_mode_ == ThresholdMode::Off) {
+    contact_threshold_value_label_->setText(QString::fromUtf8("关闭"));
+    return;
+  }
+  const double threshold = baseline_threshold_->value();
+  const int precision = threshold > 0.0 && threshold < 0.01 ? 5 : 3;
+  const QString suffix =
+    threshold_mode_ == ThresholdMode::Auto ?
+    QString::fromUtf8("（自动）") : QString::fromUtf8("（手动）");
+  contact_threshold_value_label_->setText(
+    QString::number(threshold, 'f', precision) + suffix);
+}
+
+void HandControlPanel::setAutomaticThreshold(double threshold)
+{
+  auto_threshold_ = std::clamp(threshold, 0.0, 1.0);
+  const QSignalBlocker slider_blocker(contact_threshold_slider_);
+  contact_threshold_slider_->setValue(
+    static_cast<int>(std::lround(auto_threshold_ * kThresholdSliderMaximum)));
+  baseline_threshold_->setValue(auto_threshold_);
+  threshold_mode_ = ThresholdMode::Auto;
+  updateThresholdDisplay();
 }
 
 void HandControlPanel::sendAction(
@@ -1184,6 +1618,25 @@ double HandControlPanel::median(std::vector<double> values)
     return values[middle];
   }
   return 0.5 * (values[middle - 1] + values[middle]);
+}
+
+double HandControlPanel::percentileOfSorted(
+  const std::vector<double> & sorted_values, double percentile)
+{
+  if (sorted_values.empty() || !finite(percentile)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  const double bounded_percentile = std::clamp(percentile, 0.0, 100.0);
+  const double position =
+    (bounded_percentile / 100.0) * static_cast<double>(sorted_values.size() - 1);
+  const size_t lower = static_cast<size_t>(std::floor(position));
+  const size_t upper = static_cast<size_t>(std::ceil(position));
+  if (lower == upper) {
+    return sorted_values[lower];
+  }
+  const double fraction = position - static_cast<double>(lower);
+  return sorted_values[lower] +
+         fraction * (sorted_values[upper] - sorted_values[lower]);
 }
 
 QString HandControlPanel::stateName(uint8_t state)

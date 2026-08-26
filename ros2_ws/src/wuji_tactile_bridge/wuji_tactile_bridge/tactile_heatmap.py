@@ -103,7 +103,7 @@ class TactileHeatmapApp:
     MIN_BASELINE_SAMPLES = 5
     INVALID_COLOR = "#3f3f46"
     INACTIVE_COLOR = "#111827"
-    INFERNO = colormaps["inferno"]
+    TURBO = colormaps["turbo"]
 
     def __init__(self, root: tk.Tk, node: TactileMonitorNode) -> None:
         self.root = root
@@ -249,7 +249,7 @@ class TactileHeatmapApp:
         heatmaps = ttk.Frame(content)
         heatmaps.pack(fill=tk.BOTH, expand=True)
         heatmap_frame = ttk.LabelFrame(
-            heatmaps, text="Raw Pressure（SDK 原始值；inferno；固定 [0, Raw vmax]）", padding=5
+            heatmaps, text="Raw Pressure（SDK 原始值；Turbo；固定 [0, Raw vmax]）", padding=5
         )
         heatmap_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 6))
         self.heatmap_canvas = tk.Canvas(
@@ -262,7 +262,7 @@ class TactileHeatmapApp:
         self.heatmap_canvas.pack(fill=tk.BOTH, expand=True)
 
         delta_frame = ttk.LabelFrame(
-            heatmaps, text="Baseline Residual（signed Δ − offset；inferno；固定 [0, Baseline vmax]）", padding=5
+            heatmaps, text="Baseline Residual（signed Δ − offset；Turbo；固定 [0, Baseline vmax]）", padding=5
         )
         delta_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.delta_heatmap_canvas = tk.Canvas(
@@ -276,7 +276,7 @@ class TactileHeatmapApp:
 
         temporal_frame = ttk.LabelFrame(
             heatmaps,
-            text="Temporal Delta（raw_t − raw_{t−1} positive；inferno；固定 [0, Temporal vmax]）",
+            text="Temporal Delta（raw_t − raw_{t−1} positive；Turbo；固定 [0, Temporal vmax]）",
             padding=5,
         )
         temporal_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -381,24 +381,24 @@ class TactileHeatmapApp:
                 self._cell_items.append(item)
 
     @classmethod
-    def _inferno_color(cls, value: float, maximum: float) -> str:
+    def _turbo_color(cls, value: float, maximum: float) -> str:
         if not math.isfinite(value):
             return cls.INVALID_COLOR
         # This is display-only clipping.  The caller retains the original
         # pressure / delta values for statistics and later analysis.
         ratio = max(0.0, min(1.0, value / maximum))
-        red, green, blue, _ = cls.INFERNO(ratio)
+        red, green, blue, _ = cls.TURBO(ratio)
         red, green, blue = round(red * 255), round(green * 255), round(blue * 255)
         return f"#{red:02x}{green:02x}{blue:02x}"
 
     def _render_raw_heatmap(self, snapshot: TactileSnapshot, raw: Sequence[float]) -> Tuple[float, float]:
-        """Render direct SDK raw pressure with fixed [0, Raw vmax] inferno."""
+        """Render direct SDK raw pressure with fixed [0, Raw vmax] Turbo."""
         if self._grid_shape != (snapshot.rows, snapshot.cols):
             self._build_grid(snapshot.rows, snapshot.cols)
 
         raw_vmax = self._numeric(self.raw_vmax_var, self.DEFAULT_RAW_VMAX, 1e-6)
         for item, value in zip(self._cell_items, raw):
-            self.heatmap_canvas.itemconfigure(item, fill=self._inferno_color(value, raw_vmax))
+            self.heatmap_canvas.itemconfigure(item, fill=self._turbo_color(value, raw_vmax))
 
         finite = self._finite_values(raw)
         return (max(finite), sum(finite) / len(finite)) if finite else (float("nan"), float("nan"))
@@ -547,7 +547,7 @@ class TactileHeatmapApp:
             return self.INVALID_COLOR  # Current-raw or baseline-invalid taxel.
         if not is_active:
             return self.INACTIVE_COLOR
-        return self._inferno_color(value, maximum)
+        return self._turbo_color(value, maximum)
 
     def _update_delta_values(self, snapshot: TactileSnapshot) -> Optional[Tuple[float, ...]]:
         """Build data and visualization layers without mutating raw Delta data."""
@@ -683,10 +683,10 @@ class TactileHeatmapApp:
             self.temporal_vmax_var, self.DEFAULT_TEMPORAL_VMAX, self.MIN_TEMPORAL_VMAX
         )
         for item, value in zip(self._temporal_cell_items, temporal_positive):
-            # _inferno_color does only local drawing-stage clipping. There is no
+            # _turbo_color does only local drawing-stage clipping. There is no
             # temporal threshold and no write-back into temporal_positive_delta.
             self.temporal_heatmap_canvas.itemconfigure(
-                item, fill=self._inferno_color(value, temporal_vmax)
+                item, fill=self._turbo_color(value, temporal_vmax)
             )
 
         finite_positive = [

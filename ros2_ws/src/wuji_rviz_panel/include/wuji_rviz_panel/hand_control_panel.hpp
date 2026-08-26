@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -31,6 +32,7 @@
 
 class QComboBox;
 class QDoubleSpinBox;
+class QSlider;
 class QMouseEvent;
 class QPaintEvent;
 class QShowEvent;
@@ -54,7 +56,7 @@ protected:
   void mouseMoveEvent(QMouseEvent * event) override;
 
 private:
-  static QColor infernoColor(double value, double maximum);
+  static QColor turboColor(double value, double maximum);
 
   uint32_t rows_{0};
   uint32_t cols_{0};
@@ -77,6 +79,8 @@ protected:
   void showEvent(QShowEvent * event) override;
 
 private:
+  friend class HandControlPanelTestPeer;
+
   using TactileFrame = wuji_tactile_msgs::msg::TactilePressureFrame;
   using ControlStatus = wuji_tactile_msgs::msg::HandControlStatus;
   using ControlCommand = wuji_tactile_msgs::srv::HandControlCommand;
@@ -98,9 +102,14 @@ private:
   void statusWatchTick();
 
   void startBaselineCapture();
+  void startThresholdCapture();
+  void beginThresholdCapture(bool part_of_full_calibration);
   void resetBaseline();
   void advanceBaselineCapture();
+  void advanceThresholdCapture(const std::chrono::steady_clock::time_point & now);
   void clearBaselineCapture();
+  void updateThresholdDisplay();
+  void setAutomaticThreshold(double threshold);
 
   void sendAction(
     uint8_t action, const QString & label, const QString & pose_id = QString());
@@ -108,7 +117,16 @@ private:
   void publishHeartbeat();
 
   static double median(std::vector<double> values);
+  static double percentileOfSorted(
+    const std::vector<double> & sorted_values, double percentile);
   static QString stateName(uint8_t state);
+
+  enum class ThresholdMode
+  {
+    Auto,
+    Manual,
+    Off,
+  };
 
   std::shared_ptr<rviz_common::ros_integration::RosNodeAbstractionIface> node_abstraction_;
   rclcpp::Node::SharedPtr node_;
@@ -180,6 +198,24 @@ private:
   std::vector<std::vector<double>> baseline_samples_;
   size_t baseline_capture_frame_count_{0};
 
+  bool threshold_capture_active_{false};
+  bool threshold_capture_has_first_sample_{false};
+  bool full_calibration_active_{false};
+  uint32_t threshold_capture_last_sequence_{0};
+  std::chrono::steady_clock::time_point threshold_capture_first_sample_;
+  std::vector<double> threshold_residual_samples_;
+  size_t threshold_capture_frame_count_{0};
+  size_t baseline_valid_taxel_count_{0};
+  double baseline_capture_duration_seconds_{0.0};
+  double threshold_capture_duration_seconds_{0.0};
+  double residual_median_{std::numeric_limits<double>::quiet_NaN()};
+  double residual_p95_{std::numeric_limits<double>::quiet_NaN()};
+  double residual_p99_{std::numeric_limits<double>::quiet_NaN()};
+  double residual_p999_{std::numeric_limits<double>::quiet_NaN()};
+  double residual_maximum_{std::numeric_limits<double>::quiet_NaN()};
+  double auto_threshold_{std::numeric_limits<double>::quiet_NaN()};
+  ThresholdMode threshold_mode_{ThresholdMode::Manual};
+
   QLabel * connection_label_{nullptr};
   QLabel * layout_label_{nullptr};
   QLabel * raw_stats_label_{nullptr};
@@ -187,10 +223,17 @@ private:
   QLabel * temporal_stats_label_{nullptr};
   QLabel * baseline_state_label_{nullptr};
   QLabel * request_result_label_{nullptr};
+  QLabel * contact_sensitivity_value_label_{nullptr};
+  QLabel * contact_threshold_value_label_{nullptr};
+  QLabel * dynamic_sensitivity_value_label_{nullptr};
 
   HeatmapWidget * raw_heatmap_{nullptr};
   HeatmapWidget * baseline_heatmap_{nullptr};
   HeatmapWidget * temporal_heatmap_{nullptr};
+
+  QSlider * contact_sensitivity_slider_{nullptr};
+  QSlider * contact_threshold_slider_{nullptr};
+  QSlider * dynamic_sensitivity_slider_{nullptr};
 
   QDoubleSpinBox * raw_vmax_{nullptr};
   QDoubleSpinBox * baseline_vmax_{nullptr};
@@ -199,6 +242,7 @@ private:
   QDoubleSpinBox * temporal_vmax_{nullptr};
 
   QPushButton * capture_baseline_button_{nullptr};
+  QPushButton * auto_threshold_button_{nullptr};
   QPushButton * reset_baseline_button_{nullptr};
   QComboBox * pose_selector_{nullptr};
   QPushButton * move_pose_button_{nullptr};

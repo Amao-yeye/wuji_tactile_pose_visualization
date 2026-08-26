@@ -45,6 +45,18 @@ install(DIRECTORY include/ DESTINATION include)
 install(FILES rviz_common_plugins.xml DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_display_controls test/test_display_controls.cpp)
+  target_link_libraries(test_display_controls
+    wuji_hand_control_panel
+    Qt5::Widgets
+  )
+  set_tests_properties(test_display_controls PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+  )
+endif()
+
 pluginlib_export_plugin_description_file(rviz_common rviz_common_plugins.xml)
 ament_export_include_directories(include)
 ament_export_targets(export_wuji_hand_control_panel)

@@ -60,8 +60,9 @@ updates existing `QImage`/widget state. It does not recreate widgets or run
 The three views are:
 
 - **Raw Pressure**: current finite SDK values;
-- **Baseline Residual**: positive residual from a captured two-second,
-  per-taxel median baseline;
+- **Baseline Residual**: positive residual from an independent five-second,
+  per-taxel median baseline; a following independent five-second no-contact
+  phase sets the display threshold to the finite residual P99.9;
 - **Temporal Peak |Delta|**: maximum absolute adjacent-frame change observed
   during one GUI refresh interval.
 
